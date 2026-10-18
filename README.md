@@ -1,130 +1,47 @@
 # Movie Recommendation System
 
-A content-based movie recommendation system built with NLP-style feature engineering, a custom TF-IDF implementation, and cosine similarity.
+A content-based movie recommender built with Python. It uses movie details
+such as genres, cast, and plot descriptions to find similar films.
 
-The project uses the TMDB 5000 Movie Metadata dataset to represent each movie using its overview, tagline, genres, keywords, cast, and director. It then ranks movies by cosine similarity and returns the top-N titles most similar to a selected movie.
-
-Originally built in 2022 as a learning project and refactored in 2026 to improve modularity, reproducibility, testing, and code organization.
-
-## How it works
-
-1. Load movie metadata and credits.
-2. Merge and clean the datasets.
-3. Keep the content features used for recommendations:
-   - overview
-   - tagline
-   - genres
-   - keywords
-   - cast
-   - director
-4. Normalize multi-word entities such as actor and director names so that `Tom Cruise` becomes `TomCruise`.
-5. Combine the selected fields into one text representation per movie.
-6. Apply Porter stemming.
-7. Build a term-count matrix with `CountVectorizer`.
-8. Compute TF-IDF with a custom NumPy implementation.
-9. Calculate pairwise cosine similarity.
-10. Return the top-N most similar movies.
-
-The default number of recommendations is 5 and can be changed in `src/config.py` or supplied through the CLI.
-
-## Project structure
-
-```text
-movieRecommendationSystem/
-├── data/
-│   └── raw/
-│       ├── tmdb_5000_movies.csv
-│       └── tmdb_5000_credits.csv
-├── src/
-│   ├── __init__.py
-│   ├── artifacts.py
-│   ├── cli.py
-│   ├── config.py
-│   ├── load_data.py
-│   ├── pipeline.py
-│   ├── preprocess.py
-│   ├── recommender.py
-│   └── main.ipynb
-├── tests/
-│   └── test_pipeline.py
-├── .gitignore
-├── requirements.txt
-└── README.md
-```
 
 ## Setup
 
-Clone the repository and create a virtual environment:
-
-```bash
-git clone https://github.com/saksh2410/movieRecommendationSystem.git
-cd movieRecommendationSystem
-
-python -m venv .venv
-```
-
-Activate it on Windows:
-
-```bash
-.venv\Scripts\activate
-```
-
-or on macOS/Linux:
-
-```bash
-source .venv/bin/activate
-```
+Make sure the TMDB movie and credits CSV files are in `data/raw/`. They are
+available from the [TMDB 5000 dataset on Kaggle](https://www.kaggle.com/datasets/tmdb/tmdb-movie-metadata).
 
 Install the dependencies:
 
 ```bash
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
-The project expects the TMDB movie and credits CSV files under `data/raw/`. The dataset used is available on Kaggle:
+## Use
 
-https://www.kaggle.com/datasets/tmdb/tmdb-movie-metadata
-
-## Usage
-
-### Build the recommendation artifacts
+Get recommendations for a movie:
 
 ```bash
-python -m src.cli build
+python -m src.main recommend "Iron Man"
 ```
 
-This runs the full preprocessing and recommendation pipeline and stores the processed movie dataframe and cosine-similarity matrix under `artifacts/`.
-
-### Get recommendations
+The first run builds the recommendation data automatically. To choose how many
+recommendations to show, use `--top-n`:
 
 ```bash
-python -m src.cli recommend "Iron Man"
+python -m src.main recommend "Iron Man" --top-n 10
 ```
 
-Specify a different number of results with:
+To build the data ahead of time:
 
 ```bash
-python -m src.cli recommend "Iron Man" --top-n 10
+python -m src.main build
 ```
 
-Example Python usage:
+Run the tests with:
 
-```python
-from src.pipeline import build_pipeline
-from src.recommender import get_recommendations
-
-movies, similarity = build_pipeline()
-
-recommendations = get_recommendations(
-    similarity_matrix=similarity,
-    titles=movies["title"].tolist(),
-    target_title="Iron Man",
-    top_n=5,
-)
-
-for title, score in recommendations:
-    print(f"{title}: {score:.3f}")
+```bash
+pytest
 ```
+
 
 ## Design choices
 
@@ -173,25 +90,6 @@ The tests cover core preprocessing behavior, entity normalization, TF-IDF output
 - matplotlib
 - Jupyter
 - pytest
-
-## Limitations
-
-This is a learning-focused content-based recommender rather than a production recommendation service.
-
-- It does not use user ratings or behavioral data.
-- It does not implement collaborative filtering.
-- Recommendation quality has not been evaluated against a labelled relevance dataset.
-- Results depend on the selected metadata fields.
-- Pairwise similarity requires O(n²) storage as the catalogue grows.
-- There is no deployed API or web interface.
-
-## Possible extensions
-
-- Add an offline relevance-evaluation dataset and ranking metrics.
-- Compare the custom TF-IDF implementation against scikit-learn's `TfidfVectorizer`.
-- Explore embedding-based semantic representations.
-- Expose the recommender through a lightweight API or UI.
-- Replace the full similarity matrix with approximate nearest-neighbour search for larger catalogues.
 
 ## Background
 
