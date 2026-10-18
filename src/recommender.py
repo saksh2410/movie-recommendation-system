@@ -1,113 +1,67 @@
-# imports
+"""Vectorization, similarity, and recommendation functions."""
+
+import numpy as np
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np
-import math
-import config
+
+from . import config
 
 
-def create_count_matrix(corpus: list[str]):
-    """
-    Function to create a count matrix from the given corpus using CountVectorizer.
-
-    Args
-    ----------
-    corpus: list of str
-        List of text documents.
-
-    Returns
-    ----------
-    numpy.ndarray
-        Count matrix representing the frequency of terms in the corpus.
-    """
+def create_count_matrix(corpus: list[str]) -> np.ndarray:
+    """Create a dense term-count matrix from a text corpus."""
     vectorizer = CountVectorizer(stop_words="english")
-    count_matrix = vectorizer.fit_transform(corpus).toarray()
-    return count_matrix
+    return vectorizer.fit_transform(corpus).toarray()
 
 
-def compute_tfidf(matrix: np.ndarray):
+def compute_tfidf(matrix: np.ndarray) -> np.ndarray:
+    """Compute a TF-IDF matrix using a custom NumPy implementation.
+
+    Term frequency is normalized by the total term count in each document.
+    IDF uses the common smoothed formulation:
+
+        log((1 + n_documents) / (1 + document_frequency)) + 1
     """
-    Function to compute the TF-IDF representation from the count matrix.
+    counts = matrix.astype(float)
+    row_totals = counts.sum(axis=1, keepdims=True)
+    tf = np.divide(
+        counts,
+        row_totals,
+        out=np.zeros_like(counts, dtype=float),
+        where=row_totals != 0,
+    )
 
-    Args
-    ----------
-    matrix: numpy.ndarray
-        Count matrix representing the frequency of terms.
+    n_documents = counts.shape[0]
+    document_frequency = (counts > 0).sum(axis=0)
+    idf = np.log((1 + n_documents) / (1 + document_frequency)) + 1
 
-    Returns
-    ----------
-    numpy.ndarray
-        TF-IDF matrix.
-    """
-
-    nrow = matrix.shape[0]
-    idf = []
-    for i in range(matrix.shape[1]):
-        doc_count = sum(1 for row in range(nrow) if matrix[row][i] != 0)
-        idf.append(doc_count)
-
-    tfidf_matrix = np.zeros_like(matrix, dtype=float)
-    for row in range(nrow):
-        num_words = sum(val for val in matrix[row])
-        for i in range(len(matrix[row])):
-            tf = matrix[row][i] / num_words if num_words > 0 else 0
-            idf_value = math.log10(nrow / (1 + idf[i])) if idf[i] > 0 else 0
-            tfidf_matrix[row][i] = tf * idf_value
-
-    return tfidf_matrix
+    return tf * idf
 
 
-def calculate_cosine_similarity(matrix: np.ndarray):
-    """
-    Function to calculate the cosine similarity between rows of the given matrix.
-
-    Args
-    ----------
-    matrix: numpy.ndarray
-        Input matrix (e.g., TF-IDF matrix).
-
-    Returns
-    ----------
-    numpy.ndarray
-        Cosine similarity matrix.
-    """
-    similarity_matrix = cosine_similarity(matrix)
-    return similarity_matrix
+def calculate_cosine_similarity(matrix: np.ndarray) -> np.ndarray:
+    """Calculate pairwise cosine similarity between matrix rows."""
+    return cosine_similarity(matrix)
 
 
 def get_recommendations(
     similarity_matrix: np.ndarray,
     titles: list[str],
     target_title: str,
-    top_n=config.TOP_N,
-):
-    """
-    Function to get movie recommendations based on cosine similarity.
+    top_n: int = config.TOP_N,
+) -> list[tuple[str, float]]:
+    """Return the top-N titles most similar to the requested movie."""
+    if top_n < 1:
+        raise ValueError("top_n must be at least 1")
 
-    Args
-    ----------
-    similarity_matrix: numpy.ndarray
-        Cosine similarity matrix.
-    titles: list of str
-        List of movie titles corresponding to the rows/columns of the similarity matrix.
-    target_title: str
-        Title of the target movie for which recommendations are sought.
-    top_n: int, optional
-        Number of top recommendations to return, by default 10.
+    try:
+        target_index = titles.index(target_title)
+    except ValueError as exc:
+        raise ValueError(f'Movie "{target_title}" is not in the catalogue') from exc
 
-    Returns
-    ----------
-    list of tuples
-        List of recommended movie titles and their similarity scores.
-    """
-    if target_title not in titles:
-        raise ValueError("This movie is not in the list")
-
-    target_index = titles.index(target_title)
     similarity_scores = list(enumerate(similarity_matrix[target_index]))
-    similarity_scores = sorted(similarity_scores, key=lambda x: x[1], reverse=True)
+    similarity_scores.sort(key=lambda item: item[1], reverse=True)
 
-    recommended_movies = [
-        (titles[i], score) for i, score in similarity_scores[1 : top_n + 1]
-    ]
-    return recommended_movies
+    return [
+        (titles[index], float(score))
+        for index, score in similarity_scores
+        if index != target_index
+    ][:top_n]

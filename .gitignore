@@ -1,9 +1,15 @@
-#IDE Files
-.vscode
-.venv
-*.ipynb_checkpoints
+# IDE / virtual environments
+.vscode/
+.venv/
 
 # Python-generated files
 __pycache__/
-*.pyc
+*.py[cod]
+.pytest_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Generated artifacts
 artifacts/
+*.pkl

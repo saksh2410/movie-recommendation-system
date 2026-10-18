@@ -1,167 +1,72 @@
-# imports
-import pandas as pd
+"""Preprocessing and feature-engineering utilities."""
+
 import ast
+
+import pandas as pd
 from nltk.stem import PorterStemmer
-import config
+
+from . import config
 
 
-def merge_movies_credits(df_movies: pd.DataFrame, df_credits: pd.DataFrame):
-    """
-    function to merge the movies and credit dataframes on movie title and return a merged dataframe.
-
-    Args
-    ----------
-    df_movies: pandas.Dataframe
-        Dataframe with movie title, genre, overview and other details.
-    df_credits: pandas.Dataframe
-        Dataframe with movie title, cast, and crew.
-
-    Returns
-    ----------
-    pandas.Dataframe
-        Dataframe after merging
-    """
+def merge_movies_credits(
+    df_movies: pd.DataFrame, df_credits: pd.DataFrame
+) -> pd.DataFrame:
+    """Merge movie metadata and credits on title."""
     return pd.merge(df_movies, df_credits, on="title")
 
 
-def clean_dataframe(df: pd.DataFrame):
-    """
-    function to perform feature selection, drop nulls, remove duplicates and clean up the dataframe.
-
-    Args
-    ----------
-    df: pandas.Dataframe
-        Dataframe to be cleaned
-
-    Returns
-    ----------
-    pandas.Dataframe
-        Cleaned up dataframe with only relevant columns
-    """
-
-    # keep only relevant columns
-    df = df.loc[:, config.KEEP_COLS]
-
-    # drop null or duplicated columns
-    df = df.drop_duplicates()
-    df = df.dropna()
-
-    def format_column_values(obj: str):
-        """
-        function to clean up column values into proper format.
-        it convert string values to list of strings and retain only relevant information
-
-        Args
-        ----------
-        obj: str
-            object to be cleaned up
-
-        Returns
-        ----------
-        str
-            cleaned up object
-        """
-        string_list = ast.literal_eval(obj)
-        data = ""
-        for item in string_list:
-            # Formatting strings by stripping spaces in list attributes to avoid vectorizing them separately.
-            # For example "Tom  Cruise" and "Tom Holland" should be separate single vectors without semantic similarities.
-            data += item["name"].replace(" ", "") + " "
-        return data
-
-    # format data values for certain columns
-    for col in config.CLEANUP_COLS:
-        df[col] = df[col].apply(format_column_values)
-
-    # Create a column for the director name from crew and drop the crew attribute.
-    def fetch_director(crew: list[dict]):
-        """
-        This function fetches the name of the director from the entire crew list.
-
-        Args:
-            crew (list[dict]): a list of all crew members and details such as dept, gender, id etc.
-
-        Returns:
-            str: Name of the director
-        """
-        for crew_member in ast.literal_eval(crew):
-            if crew_member["job"] == "Director":
-                return crew_member["name"].replace(" ", "")
-        return ""
-
-    df["director"] = df["crew"].apply(fetch_director)
-    df = df.drop("crew", axis=1)
-    return df
+def _extract_names(value: str) -> list[str]:
+    """Extract and normalize names from a serialized list of dictionaries."""
+    items = ast.literal_eval(value)
+    return [item["name"].replace(" ", "") for item in items]
 
 
-def generate_tags(df: pd.DataFrame):
-    """
-    function to generate tags by combining relevant text columns.
+def _extract_director(crew: str) -> str:
+    """Extract and normalize the director name from serialized crew metadata."""
+    for crew_member in ast.literal_eval(crew):
+        if crew_member.get("job") == "Director":
+            return crew_member["name"].replace(" ", "")
+    return ""
 
-    Args
-    ----------
-    df: pandas.Dataframe
-        Dataframe to generate tags for
 
-    Returns
-    ----------
-    pandas.Dataframe
-        Dataframe with an additional 'tags' column
-    """
-    df_tagged = pd.DataFrame(
-        {   "title": df["title"],
-            "tags": (
-                df["overview"]
-                + " "
-                + df["tagline"]
-                + " "
-                + df["genres"].apply(lambda x: " ".join(x))
-                + " "
-                + df["keywords"].apply(lambda x: " ".join(x))
-                + " "
-                + df["cast"].apply(lambda x: " ".join(x))
-                + " "
-                + df["director"]
-            )
-        }
+def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """Select relevant fields, remove invalid rows, and normalize metadata."""
+    cleaned = df.loc[:, config.KEEP_COLS].copy()
+    cleaned = cleaned.drop_duplicates().dropna()
+
+    for column in config.CLEANUP_COLS:
+        cleaned[column] = cleaned[column].apply(_extract_names)
+
+    cleaned["director"] = cleaned["crew"].apply(_extract_director)
+    cleaned = cleaned.drop(columns="crew")
+    return cleaned
+
+
+def generate_tags(df: pd.DataFrame) -> pd.DataFrame:
+    """Combine selected movie attributes into one text representation."""
+    tags = (
+        df["overview"].astype(str)
+        + " "
+        + df["tagline"].astype(str)
+        + " "
+        + df["genres"].apply(" ".join)
+        + " "
+        + df["keywords"].apply(" ".join)
+        + " "
+        + df["cast"].apply(" ".join)
+        + " "
+        + df["director"].astype(str)
     )
-    return df_tagged
+
+    return pd.DataFrame({"title": df["title"].values, "tags": tags.values})
 
 
-def stem_tags(df: pd.DataFrame):
-    """
-    function to perform stemming on the tags column.
+def stem_tags(df: pd.DataFrame) -> pd.DataFrame:
+    """Apply Porter stemming to the generated movie tags."""
+    stemmer = PorterStemmer()
+    stemmed = df.copy()
 
-    Args
-    ----------
-    df: pandas.Dataframe
-        Dataframe to perform stemming on
-
-    Returns
-    ----------
-    pandas.Dataframe
-        Dataframe with stemmed tags
-    """
-    ps = PorterStemmer()
-
-    def stem_text(text: str):
-        """
-        function to stem the input text.
-
-        Args
-        ----------
-        text: str
-            text to be stemmed
-
-        Returns
-        ----------
-        str
-            stemmed text
-        """
-        y = []
-        for word in text.split():
-            y.append(ps.stem(word))
-        return " ".join(y)
-
-    df["tags"] = df["tags"].apply(stem_text)
-    return df
+    stemmed["tags"] = stemmed["tags"].apply(
+        lambda text: " ".join(stemmer.stem(word) for word in text.split())
+    )
+    return stemmed
